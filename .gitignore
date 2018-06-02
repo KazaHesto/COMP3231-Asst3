@@ -1,3 +1,5 @@
 /build
 /defs.mk
 /kern/compile
+tags
+tags.idx
