@@ -36,6 +36,17 @@
  * You'll probably want to add stuff here.
  */
 
+/* Page Table Entry */
+typedef struct PTE {
+	bool cached;		// caching bit
+	bool referenced;	// reference bit
+	bool modified;		// dirty bit
+	bool read;			// read permission bit
+	bool write;			// write permission bit
+	bool exec;			// execute permission bit
+	bool valid;			// present/absent bit
+	int frameno;
+};
 
 #include <machine/vm.h>
 
