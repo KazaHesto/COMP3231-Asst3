@@ -26,12 +26,12 @@ static paddr_t first_addr;
 /* Initialization function */
 void ft_bootstrap(void)
 {
-        paddr_t mem_size = ram_getsize();
+        unsigned int num_frames = ram_getsize() / PAGE_SIZE;
 
-        f_table = kmalloc(sizeof(struct ft_entry) * (mem_size / PAGE_SIZE));
+        f_table = kmalloc(sizeof(struct ft_entry) * (num_frames));
         first_addr = ram_getfirstfree();
         first_index = first_addr / PAGE_SIZE;
-        last_index = mem_size / PAGE_SIZE - 1;
+        last_index = num_frames - 1;
         free_index = first_index;
 
         for (unsigned int i = 0; i <= last_index; i++) {
@@ -97,18 +97,19 @@ vaddr_t alloc_kpages(unsigned int npages)
 void free_kpages(vaddr_t addr)
 {
         paddr_t paddr = KVADDR_TO_PADDR(addr);
+        unsigned int addr_index = paddr / PAGE_SIZE;
 
         spinlock_acquire(&stealmem_lock);
-        if (f_table[paddr / PAGE_SIZE].state != 1) {
+        if (f_table[addr_index].state != 1) {
                 // frame can't be freed
                 spinlock_release(&stealmem_lock);
                 return;
         }
 
-        f_table[paddr / PAGE_SIZE].state = 0;
-        if (paddr / PAGE_SIZE < free_index) {
+        f_table[addr_index].state = 0;
+        if (addr_index < free_index) {
                 // freed frame is before current first free frame
-                free_index = paddr / PAGE_SIZE;
+                free_index = addr_index;
         }
         spinlock_release(&stealmem_lock);
 }
