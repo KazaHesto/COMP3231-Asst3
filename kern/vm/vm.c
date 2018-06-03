@@ -9,6 +9,7 @@
 #define NUMPAGES 16
 
 struct PTE *pagetable;
+bool pt_fullflag;
 /* Place your page table functions here */
 
 void vm_bootstrap(void)
@@ -23,7 +24,22 @@ void vm_bootstrap(void)
 int
 vm_fault(int faulttype, vaddr_t faultaddress)
 {
-	(void) faulttype;
+	if (faulttype == VM_FAULT_READONLY)
+		return EFAULT;
+	
+	/*
+	lookup pt
+	if valid
+		load tlb
+	else 
+		lookup region
+		if valid
+			alloc frame
+			zero fill
+			insert pte
+			load tlb
+		else EFAULT
+	*/
 	(void) faultaddress;
 
 	panic("vm_fault hasn't been written yet\n");
@@ -47,6 +63,7 @@ void pt_bootstrap(void)
 {
 	pagetable = kmalloc(sizeof(struct PTE) * NUMPAGES);
 	
+	pt_fullflag = false;
 	for (int i = 0; i < NUMPAGES; i++) {
 		pagetable[i].cached = false;
 		pagetable[i].referenced = false;
@@ -63,18 +80,58 @@ void pt_bootstrap(void)
 
 void pt_insert(struct PTE pte)
 {
-	(void) pte;
+	if (pt_fullflag == false) {
+		for (int i = 0; i <= NUMPAGES; i++) {
+			if (i == NUMPAGES) {
+				// page table full
+				pt_fullflag = true;
+				break;
+			}
+			if (pagetable[i].frameno == -1) {
+				pagetable[i].cached = pte.cached;
+				pagetable[i].referenced = pte.referenced;
+				pagetable[i].modified = pte.modified;
+				pagetable[i].read = pte.read;
+				pagetable[i].write = pte.write;
+				pagetable[i].exec = pte.exec;
+				pagetable[i].valid = pte.valid;
+				pagetable[i].frameno = pte.frameno;
+				pagetable[i].pid = pte.pid;
+				break;
+			}
+		}
+		return;
+	}
+	
+	// Perform clock page replacement
+	for (int i = 0; i < NUMPAGES; i++) {
+		// replace first page with referenced bit equal false
+		if (pagetable[i].referenced == false) {
+			// reset other pages' referenced bit
+			for (int j = 0; j < NUMPAGES; j++) {
+				pagetable[j].referenced = false;
+			}
+			pagetable[i].cached = pte.cached;
+			pagetable[i].referenced = pte.referenced;
+			pagetable[i].modified = pte.modified;
+			pagetable[i].read = pte.read;
+			pagetable[i].write = pte.write;
+			pagetable[i].exec = pte.exec;
+			pagetable[i].valid = pte.valid;
+			pagetable[i].frameno = pte.frameno;
+			pagetable[i].pid = pte.pid;
+			return;
+		}
+	}
+	
 }
 
 struct PTE pt_lookup(int pindex)
 {
-	(void) pindex;
-	struct PTE tmp;
-	return tmp;
+	return pagetable[pindex];
 }
 
 void pt_update(int pindex, struct PTE pte)
 {
-	(void) pindex;
-	(void) pte;
+	pagetable[pindex] = pte;
 }
