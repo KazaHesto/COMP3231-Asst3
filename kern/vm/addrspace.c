@@ -61,8 +61,6 @@ as_create(void)
 	}
 
 	as->stack_end = USERSTACK;
-	as->heap_start = (vaddr_t) 0;
-	as->heap_end = (vaddr_t) 0;
 	as->start = NULL;
 
 	return as;
@@ -78,8 +76,6 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		return ENOMEM;
 	}
 
-	newas->heap_start = old->heap_start;
-	newas->heap_end = old->heap_end;
 	newas->stack_end = old->stack_end;
 	newas->start = NULL;
 
@@ -175,27 +171,22 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 	if (as == NULL) return EFAULT;
 	if (vaddr + memsize >= as->stack_end) return ENOMEM;
 
-	// shift addr of heap
-	struct region *curr = as->start;
-	while (curr != NULL) {
-		if (curr->base == as->heap_start) {
-			curr->base += memsize;
-			as->heap_start += memsize;
-			as->heap_end += memsize;
-		}
-		if (curr->next == NULL) break;
-	}
 	struct region *new = kmalloc(sizeof(struct region));
+	if (new == NULL) {
+		return ENOMEM;
+	}
+
 	new->base = vaddr;
 	new->size = memsize;
 	new->read = readable;
 	new->write = writeable;
-	curr->next = new;
-	new->next = NULL;
+	new->next = as->start;
+	as->start = new;
 
 	// unused
-	(void)executable;
-	return ENOSYS; /* Unimplemented */
+	(void) executable;
+
+	return 0;
 }
 
 int
