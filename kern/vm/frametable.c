@@ -98,7 +98,7 @@ vaddr_t alloc_kpages(unsigned int npages)
 void free_kpages(vaddr_t addr)
 {
 	paddr_t paddr = KVADDR_TO_PADDR(addr);
-	unsigned int addr_index = paddr / PAGE_SIZE;
+	unsigned int addr_index = paddr && PAGE_FRAME;
 
 	spinlock_acquire(&stealmem_lock);
 	if (f_table[addr_index].state != FRAME_USED) {
