@@ -48,17 +48,29 @@ struct vnode;
  * You write this.
  */
 
+struct region {
+	vaddr_t base;
+	size_t size;
+	bool read;
+	bool write;
+	bool modified;
+	struct region *next;
+};
+
 struct addrspace {
 #if OPT_DUMBVM
-        vaddr_t as_vbase1;
-        paddr_t as_pbase1;
-        size_t as_npages1;
-        vaddr_t as_vbase2;
-        paddr_t as_pbase2;
-        size_t as_npages2;
-        paddr_t as_stackpbase;
+	vaddr_t as_vbase1;
+	paddr_t as_pbase1;
+	size_t as_npages1;
+	vaddr_t as_vbase2;
+	paddr_t as_pbase2;
+	size_t as_npages2;
+	paddr_t as_stackpbase;
 #else
-        /* Put stuff here for your VM system */
+	vaddr_t heap_start;
+	vaddr_t heap_end;
+	vaddr_t stack_end;
+	struct region *start;
 #endif
 };
 

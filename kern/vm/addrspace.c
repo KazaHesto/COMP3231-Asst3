@@ -38,6 +38,8 @@
 #include <vm.h>
 #include <proc.h>
 
+#define NUMSTACK 16
+
 /*
  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
  * assignment, this file is not compiled or linked or in any way
@@ -58,9 +60,10 @@ as_create(void)
 		return NULL;
 	}
 
-	/*
-	 * Initialize as needed.
-	 */
+	as->stack_end = USERSTACK;
+	as->heap_start = (vaddr_t) 0;
+	as->heap_end = (vaddr_t) 0;
+	as->start = NULL;
 
 	return as;
 }
@@ -69,17 +72,39 @@ int
 as_copy(struct addrspace *old, struct addrspace **ret)
 {
 	struct addrspace *newas;
-
+	
 	newas = as_create();
 	if (newas==NULL) {
 		return ENOMEM;
 	}
-
-	/*
-	 * Write this.
-	 */
-
-	(void)old;
+	
+	newas->heap_start = old->heap_start;
+	newas->heap_end = old->heap_end;
+	newas->stack_end = old->stack_end;
+	newas->start = NULL;
+	
+	// copying each region
+	struct region *currOld = old->start;
+	struct region *currNew = NULL;
+	while (currOld != NULL) {
+		struct region *new = kmalloc(sizeof(struct region));
+		new->base = currOld->base;
+		new->size = currOld->size;
+		new->read = currOld->read;
+		new->write = currOld->write;
+		new->modified = currOld->modified;
+		new->next = NULL;
+		// is newas has no start
+		if (newas->start == NULL) {
+			newas->start = new;
+			currNew = new;
+			currOld = currOld->next;
+			continue;
+		}
+		currNew->next = new;
+		currNew = currNew->next;
+		currOld = currOld->next;
+	}
 
 	*ret = newas;
 	return 0;
@@ -88,9 +113,15 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 void
 as_destroy(struct addrspace *as)
 {
-	/*
-	 * Clean up as needed.
-	 */
+	if (as == NULL) return;
+	
+	// freeing each region
+	struct region *curr = as->start;
+	while (curr != NULL) {
+		struct region *del = curr;
+		curr = curr->next;
+		kfree(del);
+	}
 
 	kfree(as);
 }
@@ -141,15 +172,31 @@ int
 as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
                  int readable, int writeable, int executable)
 {
-	/*
-	 * Write this.
-	 */
-
-	(void)as;
-	(void)vaddr;
-	(void)memsize;
-	(void)readable;
-	(void)writeable;
+	if (as == NULL) return EFAULT;
+	if (vaddr + memsize >= as->stack_end) return ENOMEM;
+	if (readable < 0 || readable > 1) return EINVAL;
+	if (writeable < 0 || writeable > 1) return EINVAL;
+	if (executable < 0 || executable > 1) return EINVAL;
+	
+	// shift addr of heap
+	struct region *curr = as->start;
+	while (curr != NULL) {
+		if (curr->base == as->heap_start) {
+			curr->base += memsize;
+			as->heap_start += memsize;
+			as->heap_end += memsize;
+		}
+		if (curr->next == NULL) break;
+	}
+	struct region *new = kmalloc(sizeof(struct region));
+	new->base = vaddr;
+	new->size = memsize;
+	new->read = readable;
+	new->write = writeable;
+	curr->next = new;
+	new->next = NULL;
+	
+	// unused
 	(void)executable;
 	return ENOSYS; /* Unimplemented */
 }
@@ -157,36 +204,51 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 int
 as_prepare_load(struct addrspace *as)
 {
-	/*
-	 * Write this.
-	 */
-
-	(void)as;
+	if (as == NULL) return EFAULT;
+	
+	struct region *curr = as->start;
+	while (curr != NULL) {
+		// check if not writable
+		if (curr->write == false) {
+			curr->write = true;
+			curr->modified = true;
+		}
+		curr = curr->next;
+	}
+	
 	return 0;
 }
 
 int
 as_complete_load(struct addrspace *as)
 {
-	/*
-	 * Write this.
-	 */
-
-	(void)as;
+	if (as == NULL) return EFAULT;
+	
+	struct region *curr = as->start;
+	while (curr != NULL) {
+		// check if writable and modified
+		if (curr->write == true && curr->modified == true) {
+			curr->write = false;
+			curr->modified = false;
+		}
+		curr = curr->next;
+	}
+	
 	return 0;
 }
 
 int
 as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 {
-	/*
-	 * Write this.
-	 */
-
-	(void)as;
+	if (as == NULL) return EFAULT;
+	
+	size_t offset = NUMSTACK * PAGE_SIZE;
+	as_define_region(as, as->stack_end - offset, offset, 1, 1, 1);
+	// move stack ptr
+	as->stack_end -= offset;
 
 	/* Initial user-level stack pointer */
-	*stackptr = USERSTACK;
+	*stackptr = as->stack_end;
 
 	return 0;
 }
