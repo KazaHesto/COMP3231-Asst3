@@ -72,17 +72,17 @@ int
 as_copy(struct addrspace *old, struct addrspace **ret)
 {
 	struct addrspace *newas;
-	
+
 	newas = as_create();
 	if (newas==NULL) {
 		return ENOMEM;
 	}
-	
+
 	newas->heap_start = old->heap_start;
 	newas->heap_end = old->heap_end;
 	newas->stack_end = old->stack_end;
 	newas->start = NULL;
-	
+
 	// copying each region
 	struct region *currOld = old->start;
 	struct region *currNew = NULL;
@@ -114,7 +114,7 @@ void
 as_destroy(struct addrspace *as)
 {
 	if (as == NULL) return;
-	
+
 	// freeing each region
 	struct region *curr = as->start;
 	while (curr != NULL) {
@@ -174,10 +174,7 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 {
 	if (as == NULL) return EFAULT;
 	if (vaddr + memsize >= as->stack_end) return ENOMEM;
-	if (readable < 0 || readable > 1) return EINVAL;
-	if (writeable < 0 || writeable > 1) return EINVAL;
-	if (executable < 0 || executable > 1) return EINVAL;
-	
+
 	// shift addr of heap
 	struct region *curr = as->start;
 	while (curr != NULL) {
@@ -195,7 +192,7 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 	new->write = writeable;
 	curr->next = new;
 	new->next = NULL;
-	
+
 	// unused
 	(void)executable;
 	return ENOSYS; /* Unimplemented */
@@ -205,7 +202,7 @@ int
 as_prepare_load(struct addrspace *as)
 {
 	if (as == NULL) return EFAULT;
-	
+
 	struct region *curr = as->start;
 	while (curr != NULL) {
 		// check if not writable
@@ -215,7 +212,7 @@ as_prepare_load(struct addrspace *as)
 		}
 		curr = curr->next;
 	}
-	
+
 	return 0;
 }
 
@@ -223,7 +220,7 @@ int
 as_complete_load(struct addrspace *as)
 {
 	if (as == NULL) return EFAULT;
-	
+
 	struct region *curr = as->start;
 	while (curr != NULL) {
 		// check if writable and modified
@@ -233,7 +230,7 @@ as_complete_load(struct addrspace *as)
 		}
 		curr = curr->next;
 	}
-	
+
 	return 0;
 }
 
@@ -241,7 +238,7 @@ int
 as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 {
 	if (as == NULL) return EFAULT;
-	
+
 	size_t offset = NUMSTACK * PAGE_SIZE;
 	as_define_region(as, as->stack_end - offset, offset, 1, 1, 1);
 	// move stack ptr
