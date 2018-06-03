@@ -17,19 +17,18 @@ struct ft_entry {
 static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
 
 static struct ft_entry *f_table = NULL;
-static unsigned int last_index;
+static unsigned int num_frames;
 static unsigned int free_index;
 
 /* Initialization function */
 void ft_bootstrap(void)
 {
-	unsigned int num_frames = ram_getsize() / PAGE_SIZE;
+	num_frames = ram_getsize() / PAGE_SIZE;
 	f_table = kmalloc(sizeof(struct ft_entry) * (num_frames));
 	unsigned int first_index = ram_getfirstfree() / PAGE_SIZE;
-	last_index = num_frames - 1;
 	free_index = first_index;
 
-	for (unsigned int i = 0; i <= last_index; i++) {
+	for (unsigned int i = 0; i < num_frames; i++) {
 		if (i < first_index) {
 			// mark frames as not available
 			f_table[i].state = FRAME_LOCKED;
@@ -38,9 +37,7 @@ void ft_bootstrap(void)
 			f_table[i].state = FRAME_FREE;
 		}
 	}
-
 }
-
 
 /* Note that this function returns a VIRTUAL address, not a physical
  * address
@@ -59,7 +56,7 @@ vaddr_t alloc_kpages(unsigned int npages)
 		addr = ram_stealmem(npages);
 		spinlock_release(&stealmem_lock);
 		if (addr == 0) {
-				return 0;
+			return 0;
 		}
 		return PADDR_TO_KVADDR(addr);
 	}
@@ -70,7 +67,7 @@ vaddr_t alloc_kpages(unsigned int npages)
 	}
 
 	spinlock_acquire(&stealmem_lock);
-	if (free_index == 0) {
+	if (free_index == num_frames) {
 		// no free memory
 		spinlock_release(&stealmem_lock);
 		return 0;
@@ -81,8 +78,8 @@ vaddr_t alloc_kpages(unsigned int npages)
 	f_table[free_index].state = FRAME_USED;
 
 	unsigned int i = free_index;
-	free_index = 0;
-	for (; i <= last_index; i++) {
+	free_index = num_frames;
+	for (; i < num_frames; i++) {
 		if (f_table[i].state == FRAME_FREE) {
 			// update free_index to the next free frame
 			free_index = i;
@@ -108,7 +105,7 @@ void free_kpages(vaddr_t addr)
 	}
 
 	f_table[addr_index].state = FRAME_FREE;
-	if (addr_index < free_index || free_index == 0) {
+	if (addr_index < free_index) {
 		// freed frame is before current first free frame or there
 		// were no free frames
 		free_index = addr_index;
