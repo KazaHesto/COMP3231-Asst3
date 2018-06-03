@@ -16,7 +16,7 @@ struct ft_entry {
 
 static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
 
-static struct ft_entry *f_table;
+static struct ft_entry *f_table = NULL;
 static unsigned int last_index;
 static unsigned int free_index;
 
