@@ -49,24 +49,18 @@ void vm_bootstrap(void)
 int
 vm_fault(int faulttype, vaddr_t faultaddress)
 {
-	paddr_t paddr;
-	int i;
 	uint32_t ehi, elo;
-	struct addrspace *as;
-	int spl;
-
 	faultaddress &= PAGE_FRAME;
 
 	DEBUG(DB_VM, "vm.c: fault: 0x%x\n", faultaddress);
 
 	switch (faulttype) {
-	    case VM_FAULT_READONLY:
-	    /* We always create pages read-write, so we can't get this */
-		panic("vm.c: got VM_FAULT_READONLY\n");
-	    case VM_FAULT_READ:
-	    case VM_FAULT_WRITE:
+		case VM_FAULT_READONLY:
+		return EFAULT;
+		case VM_FAULT_READ:
+		case VM_FAULT_WRITE:
 		break;
-	    default:
+		default:
 		return EINVAL;
 	}
 
@@ -79,7 +73,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 		return EFAULT;
 	}
 
-	as = proc_getas();
+	struct addrspace *as = proc_getas();
 	if (as == NULL) {
 		/*
 		 * No address space set up. This is probably also a
@@ -88,13 +82,30 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 		return EFAULT;
 	}
 
-	uint32_t index = hpt_hash(as, faultaddress);
+	// check which region the address is in and the
+	// corresponding permissions
+	struct region *cur_region = as->start;
+	while (cur_region != NULL) {
+		if (faultaddress >= cur_region->base) {
+			if (faultaddress - cur_region->base < cur_region->size) {
+				break;
+			}
+		}
+		cur_region = cur_region->next;
+	}
 
+	if (cur_region == NULL) {
+		// no region matching the faultaddress
+		return EFAULT;
+	}
+
+	// find matching entry in page table
+	uint32_t index = hpt_hash(as, faultaddress);
 	spinlock_acquire(&pagetable_lock);
-	while ((pagetable[index].pid != as || pagetable[index].page != faultaddress)) {
+	while (pagetable[index].pid != as || pagetable[index].page != faultaddress) {
 		if (pagetable[index].next == 0) {
 			for (uint32_t j = index; j < num_pages; j++) {
-				if (pagetable[index].pid == NULL) {
+				if (pagetable[j].pid == NULL) {
 					pagetable[index].next = j;
 					index = j;
 				}
@@ -104,48 +115,51 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	}
 
 	if (pagetable[index].pid == NULL) {
-		// page not allocated
-		pagetable[index].read = true;
-		pagetable[index].write = true;
+		// no entry in page table yet
+		pagetable[index].read = cur_region->read;
+		pagetable[index].write = cur_region->write;
 		pagetable[index].page = faultaddress;
 		pagetable[index].frame = alloc_kpages(1);
 		pagetable[index].pid = as;
 		pagetable[index].next = 0;
 	}
 
-	paddr = KVADDR_TO_PADDR(pagetable[index].frame);
+	paddr_t paddr = KVADDR_TO_PADDR(pagetable[index].frame);
 	spinlock_release(&pagetable_lock);
 
 	/* make sure it's page-aligned */
 	KASSERT((paddr & PAGE_FRAME) == paddr);
 
 	/* Disable interrupts on this CPU while frobbing the TLB. */
-	spl = splhigh();
+	int spl = splhigh();
 
-	for (i = 0; i < NUM_TLB; i++) {
+	for (int i = 0; i < NUM_TLB; i++) {
 		tlb_read(&ehi, &elo, i);
 		if (elo & TLBLO_VALID) {
 			continue;
 		}
 		ehi = faultaddress;
-		elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
+		elo = paddr | TLBLO_VALID;
+		if (cur_region->write) {
+			elo |= TLBLO_DIRTY;
+		}
 		DEBUG(DB_VM, "vm.c: 0x%x -> 0x%x\n", faultaddress, paddr);
 		tlb_write(ehi, elo, i);
 		splx(spl);
 		return 0;
 	}
 
-	kprintf("dumbvm: Ran out of TLB entries - cannot handle page fault\n");
+	kprintf("vm.c: Ran out of TLB entries - cannot handle page fault\n");
 	splx(spl);
 	return EFAULT;
 }
 
 uint32_t hpt_hash(struct addrspace *as, vaddr_t faultaddr)
 {
-        uint32_t index;
+	uint32_t index;
 
-        index = (((uint32_t )as) ^ (faultaddr >> PAGE_BITS)) % num_pages;
-        return index;
+	index = (((uint32_t )as) ^ (faultaddr >> PAGE_BITS)) % num_pages;
+	return index;
 }
 
 /*
