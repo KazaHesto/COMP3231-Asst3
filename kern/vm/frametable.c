@@ -91,6 +91,7 @@ vaddr_t alloc_kpages(unsigned int npages)
 	}
 	spinlock_release(&stealmem_lock);
 
+	bzero((void *)PADDR_TO_KVADDR(addr), PAGE_SIZE);
 	return PADDR_TO_KVADDR(addr);
 }
 
