@@ -7,25 +7,17 @@
 #include <machine/tlb.h>
 
 #define NUMPAGES 16
-/* Place your page table functions here */
 
+struct PTE *pagetable;
+/* Place your page table functions here */
 
 void vm_bootstrap(void)
 {
         ft_bootstrap();
 
         /* page table initialisation */
-        // struct PTE pagetable[NUMPAGES];
-        // for (int i = 0; i < NUMPAGES; i++) {
-        //     pagetable[i]->cached = false;
-        //     pagetable[i]->referenced = false;
-        //     pagetable[i]->modified = false;
-        //     pagetable[i]->read = false;
-        //     pagetable[i]->write = false;
-        //     pagetable[i]->exec = false;
-        //     pagetable[i]->valid = false;
-        //     pagetable[i]->frameno = -1;
-        // }
+        pt_bootstrap();
+        
 }
 
 int
@@ -51,3 +43,19 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
         panic("vm tried to do tlb shootdown?!\n");
 }
 
+void pt_bootstrap(void)
+{
+		pagetable = kmalloc(sizeof(struct PTE) * NUMPAGES);
+		
+		for (int i = 0; i < NUMPAGES; i++) {
+            pagetable[i].cached = false;
+            pagetable[i].referenced = false;
+            pagetable[i].modified = false;
+            pagetable[i].read = false;
+            pagetable[i].write = false;
+            pagetable[i].exec = false;
+            pagetable[i].valid = false;
+            pagetable[i].frameno = -1;		// not mapped to any frame
+        }
+		
+}

@@ -71,4 +71,6 @@ void vm_tlbshootdown(const struct tlbshootdown *);
 
 void ft_bootstrap(void);
 
+void pt_bootstrap(void);
+
 #endif /* _VM_H_ */
