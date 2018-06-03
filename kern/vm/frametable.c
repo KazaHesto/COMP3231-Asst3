@@ -64,6 +64,11 @@ vaddr_t alloc_kpages(unsigned int npages)
 		return PADDR_TO_KVADDR(addr);
 	}
 
+	if (npages != 1) {
+		// allocator only works for 1 page alloc
+		return 0;
+	}
+
 	spinlock_acquire(&stealmem_lock);
 	if (free_index == 0) {
 		// no free memory
