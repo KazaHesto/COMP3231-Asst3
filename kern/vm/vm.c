@@ -16,8 +16,7 @@ static struct spinlock pagetable_lock = SPINLOCK_INITIALIZER;
 
 /* Page Table Entry */
 struct PTE {
-	bool read;			// read permission bit
-	bool write;			// write permission bit
+	int write;			// write permission bit
 	vaddr_t page;
 	vaddr_t frame;
 	struct addrspace *pid;
@@ -35,8 +34,7 @@ void vm_bootstrap(void)
 	num_pages = ram_getsize() / PAGE_SIZE;
 	pagetable = kmalloc(sizeof(struct PTE) * num_pages);
 	for (uint32_t i = 0; i < num_pages; i++) {
-		pagetable[i].read = false;
-		pagetable[i].write = false;
+		pagetable[i].write = 0;
 		pagetable[i].page = 0;
 		pagetable[i].frame = 0;
 		pagetable[i].pid = NULL;
@@ -116,7 +114,6 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 	if (pagetable[index].pid == NULL) {
 		// no entry in page table yet
-		pagetable[index].read = cur_region->read;
 		pagetable[index].write = cur_region->write;
 		pagetable[index].page = faultaddress;
 		pagetable[index].frame = alloc_kpages(1);
