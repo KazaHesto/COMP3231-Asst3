@@ -17,20 +17,15 @@ struct ft_entry {
 static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
 
 static struct ft_entry *f_table;
-static unsigned int first_index;
 static unsigned int last_index;
 static unsigned int free_index;
-
-static paddr_t first_addr;
 
 /* Initialization function */
 void ft_bootstrap(void)
 {
 	unsigned int num_frames = ram_getsize() / PAGE_SIZE;
-
 	f_table = kmalloc(sizeof(struct ft_entry) * (num_frames));
-	first_addr = ram_getfirstfree();
-	first_index = first_addr / PAGE_SIZE;
+	unsigned int first_index = ram_getfirstfree() / PAGE_SIZE;
 	last_index = num_frames - 1;
 	free_index = first_index;
 
