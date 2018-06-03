@@ -5,10 +5,10 @@
 #include <addrspace.h>
 #include <vm.h>
 
-/* Place your frametable data-structures here
- * You probably also want to write a frametable initialisation
- * function and call it from vm_bootstrap
- */
+// frame table entry states
+#define FRAME_FREE       0
+#define FRAME_USED       1
+#define FRAME_LOCKED    -1
 
 struct ft_entry {
 	int state;
@@ -37,10 +37,10 @@ void ft_bootstrap(void)
 	for (unsigned int i = 0; i <= last_index; i++) {
 		if (i < first_index) {
 			// mark frames as not available
-			f_table[i].state = -1;
+			f_table[i].state = FRAME_LOCKED;
 		} else {
 			// mark frames as free
-			f_table[i].state = 0;
+			f_table[i].state = FRAME_FREE;
 		}
 	}
 
@@ -76,14 +76,14 @@ vaddr_t alloc_kpages(unsigned int npages)
 		return 0;
 	}
 
-	addr = PAGE_SIZE * free_index;
+	addr = free_index * PAGE_SIZE;
 	// set memory as allocated
-	f_table[free_index].state = 1;
+	f_table[free_index].state = FRAME_USED;
 
 	unsigned int i = free_index;
 	free_index = 0;
 	for (; i <= last_index; i++) {
-		if (f_table[i].state == 0) {
+		if (f_table[i].state == FRAME_FREE) {
 			// update free_index to the next free frame
 			free_index = i;
 			break;
@@ -101,15 +101,16 @@ void free_kpages(vaddr_t addr)
 	unsigned int addr_index = paddr / PAGE_SIZE;
 
 	spinlock_acquire(&stealmem_lock);
-	if (f_table[addr_index].state != 1) {
+	if (f_table[addr_index].state != FRAME_USED) {
 		// frame can't be freed
 		spinlock_release(&stealmem_lock);
 		return;
 	}
 
-	f_table[addr_index].state = 0;
-	if (addr_index < free_index) {
-		// freed frame is before current first free frame
+	f_table[addr_index].state = FRAME_FREE;
+	if (addr_index < free_index || free_index == 0) {
+		// freed frame is before current first free frame or there
+		// were no free frames
 		free_index = addr_index;
 	}
 	spinlock_release(&stealmem_lock);
