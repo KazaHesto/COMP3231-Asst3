@@ -46,6 +46,7 @@ struct PTE {
 	bool exec;			// execute permission bit
 	bool valid;			// present/absent bit
 	int frameno;
+	pid_t pid;
 };
 
 #include <machine/vm.h>

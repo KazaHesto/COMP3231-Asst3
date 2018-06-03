@@ -56,6 +56,7 @@ void pt_bootstrap(void)
             pagetable[i].exec = false;
             pagetable[i].valid = false;
             pagetable[i].frameno = -1;		// not mapped to any frame
+			pagetable[i].pid = -1;
         }
 		
 }
