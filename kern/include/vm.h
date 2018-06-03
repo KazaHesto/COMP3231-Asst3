@@ -74,4 +74,10 @@ void ft_bootstrap(void);
 
 void pt_bootstrap(void);
 
+void pt_insert(struct PTE pte);
+
+struct PTE pt_lookup(int pindex);
+
+void pt_update(int pindex, struct PTE pte);
+
 #endif /* _VM_H_ */

@@ -11,7 +11,7 @@
  */
 
 struct ft_entry {
-        int state;
+	int state;
 };
 
 static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
@@ -26,23 +26,23 @@ static paddr_t first_addr;
 /* Initialization function */
 void ft_bootstrap(void)
 {
-        unsigned int num_frames = ram_getsize() / PAGE_SIZE;
+	unsigned int num_frames = ram_getsize() / PAGE_SIZE;
 
-        f_table = kmalloc(sizeof(struct ft_entry) * (num_frames));
-        first_addr = ram_getfirstfree();
-        first_index = first_addr / PAGE_SIZE;
-        last_index = num_frames - 1;
-        free_index = first_index;
+	f_table = kmalloc(sizeof(struct ft_entry) * (num_frames));
+	first_addr = ram_getfirstfree();
+	first_index = first_addr / PAGE_SIZE;
+	last_index = num_frames - 1;
+	free_index = first_index;
 
-        for (unsigned int i = 0; i <= last_index; i++) {
-                if (i < first_index) {
-                        // mark frames as not available
-                        f_table[i].state = -1;
-                } else {
-                        // mark frames as free
-                        f_table[i].state = 0;
-                }
-        }
+	for (unsigned int i = 0; i <= last_index; i++) {
+		if (i < first_index) {
+			// mark frames as not available
+			f_table[i].state = -1;
+		} else {
+			// mark frames as free
+			f_table[i].state = 0;
+		}
+	}
 
 }
 
@@ -57,60 +57,60 @@ void ft_bootstrap(void)
 
 vaddr_t alloc_kpages(unsigned int npages)
 {
-        paddr_t addr;
-        if (f_table == NULL) {
-                // using ram_stealmem() while frametable isn't ready
-                spinlock_acquire(&stealmem_lock);
-                addr = ram_stealmem(npages);
-                spinlock_release(&stealmem_lock);
-                if (addr == 0) {
-                        return 0;
-                }
-                return PADDR_TO_KVADDR(addr);
-        }
+	paddr_t addr;
+	if (f_table == NULL) {
+		// using ram_stealmem() while frametable isn't ready
+		spinlock_acquire(&stealmem_lock);
+		addr = ram_stealmem(npages);
+		spinlock_release(&stealmem_lock);
+		if (addr == 0) {
+				return 0;
+		}
+		return PADDR_TO_KVADDR(addr);
+	}
 
-        spinlock_acquire(&stealmem_lock);
-        if (free_index == 0) {
-                // no free memory
-                spinlock_release(&stealmem_lock);
-                return 0;
-        }
+	spinlock_acquire(&stealmem_lock);
+	if (free_index == 0) {
+		// no free memory
+		spinlock_release(&stealmem_lock);
+		return 0;
+	}
 
-        addr = PAGE_SIZE * free_index;
-        // set memory as allocated
-        f_table[free_index].state = 1;
+	addr = PAGE_SIZE * free_index;
+	// set memory as allocated
+	f_table[free_index].state = 1;
 
-        unsigned int i = free_index;
-        free_index = 0;
-        for (; i <= last_index; i++) {
-                if (f_table[i].state == 0) {
-                        // update free_index to the next free frame
-                        free_index = i;
-                        break;
-                }
-        }
-        spinlock_release(&stealmem_lock);
+	unsigned int i = free_index;
+	free_index = 0;
+	for (; i <= last_index; i++) {
+		if (f_table[i].state == 0) {
+			// update free_index to the next free frame
+			free_index = i;
+			break;
+		}
+	}
+	spinlock_release(&stealmem_lock);
 
-        return PADDR_TO_KVADDR(addr);
+	return PADDR_TO_KVADDR(addr);
 }
 
 void free_kpages(vaddr_t addr)
 {
-        paddr_t paddr = KVADDR_TO_PADDR(addr);
-        unsigned int addr_index = paddr / PAGE_SIZE;
+	paddr_t paddr = KVADDR_TO_PADDR(addr);
+	unsigned int addr_index = paddr / PAGE_SIZE;
 
-        spinlock_acquire(&stealmem_lock);
-        if (f_table[addr_index].state != 1) {
-                // frame can't be freed
-                spinlock_release(&stealmem_lock);
-                return;
-        }
+	spinlock_acquire(&stealmem_lock);
+	if (f_table[addr_index].state != 1) {
+		// frame can't be freed
+		spinlock_release(&stealmem_lock);
+		return;
+	}
 
-        f_table[addr_index].state = 0;
-        if (addr_index < free_index) {
-                // freed frame is before current first free frame
-                free_index = addr_index;
-        }
-        spinlock_release(&stealmem_lock);
+	f_table[addr_index].state = 0;
+	if (addr_index < free_index) {
+		// freed frame is before current first free frame
+		free_index = addr_index;
+	}
+	spinlock_release(&stealmem_lock);
 }
 

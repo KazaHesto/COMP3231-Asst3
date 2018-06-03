@@ -51,77 +51,80 @@
 struct addrspace *
 as_create(void)
 {
-        struct addrspace *as;
+	struct addrspace *as;
 
-        as = kmalloc(sizeof(struct addrspace));
-        if (as == NULL) {
-                return NULL;
-        }
+	as = kmalloc(sizeof(struct addrspace));
+	if (as == NULL) {
+		return NULL;
+	}
 
-        /*
-         * Initialize as needed.
-         */
+	/*
+	 * Initialize as needed.
+	 */
 
-        return as;
+	return as;
 }
 
 int
 as_copy(struct addrspace *old, struct addrspace **ret)
 {
-        struct addrspace *newas;
+	struct addrspace *newas;
 
-        newas = as_create();
-        if (newas==NULL) {
-                return ENOMEM;
-        }
+	newas = as_create();
+	if (newas==NULL) {
+		return ENOMEM;
+	}
 
-        /*
-         * Write this.
-         */
+	/*
+	 * Write this.
+	 */
 
-        (void)old;
+	(void)old;
 
-        *ret = newas;
-        return 0;
+	*ret = newas;
+	return 0;
 }
 
 void
 as_destroy(struct addrspace *as)
 {
-        /*
-         * Clean up as needed.
-         */
+	/*
+	 * Clean up as needed.
+	 */
 
-        kfree(as);
+	kfree(as);
 }
 
 void
 as_activate(void)
 {
-        struct addrspace *as;
+	/* Copied from dumbvm.c */
+	int i, spl;
+	struct addrspace *as;
 
-        as = proc_getas();
-        if (as == NULL) {
-                /*
-                 * Kernel thread without an address space; leave the
-                 * prior address space in place.
-                 */
-                return;
-        }
+	as = proc_getas();
+	if (as == NULL) {
+		return;
+	}
 
-        /*
-         * Write this.
-         */
+	/* Disable interrupts on this CPU while frobbing the TLB. */
+	spl = splhigh();
+
+	for (i=0; i<NUM_TLB; i++) {
+		tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
+	}
+
+	splx(spl);
 }
 
 void
 as_deactivate(void)
 {
-        /*
-         * Write this. For many designs it won't need to actually do
-         * anything. See proc.c for an explanation of why it (might)
-         * be needed.
-         */
+	/*
+	 * Write this. For many designs it won't need to actually do
+	 * anything. See proc.c for an explanation of why it (might)
+	 * be needed.
+	 */
 }
 
 /*
@@ -138,53 +141,53 @@ int
 as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
                  int readable, int writeable, int executable)
 {
-        /*
-         * Write this.
-         */
+	/*
+	 * Write this.
+	 */
 
-        (void)as;
-        (void)vaddr;
-        (void)memsize;
-        (void)readable;
-        (void)writeable;
-        (void)executable;
-        return ENOSYS; /* Unimplemented */
+	(void)as;
+	(void)vaddr;
+	(void)memsize;
+	(void)readable;
+	(void)writeable;
+	(void)executable;
+	return ENOSYS; /* Unimplemented */
 }
 
 int
 as_prepare_load(struct addrspace *as)
 {
-        /*
-         * Write this.
-         */
+	/*
+	 * Write this.
+	 */
 
-        (void)as;
-        return 0;
+	(void)as;
+	return 0;
 }
 
 int
 as_complete_load(struct addrspace *as)
 {
-        /*
-         * Write this.
-         */
+	/*
+	 * Write this.
+	 */
 
-        (void)as;
-        return 0;
+	(void)as;
+	return 0;
 }
 
 int
 as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 {
-        /*
-         * Write this.
-         */
+	/*
+	 * Write this.
+	 */
 
-        (void)as;
+	(void)as;
 
-        /* Initial user-level stack pointer */
-        *stackptr = USERSTACK;
+	/* Initial user-level stack pointer */
+	*stackptr = USERSTACK;
 
-        return 0;
+	return 0;
 }
 
