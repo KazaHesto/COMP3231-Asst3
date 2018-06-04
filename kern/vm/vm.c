@@ -28,7 +28,8 @@ static uint32_t num_pages;
 
 uint32_t hpt_hash(struct addrspace *as, vaddr_t faultaddr);
 
-void vm_bootstrap(void)
+void
+vm_bootstrap(void)
 {
 	/* page table initialisation */
 	num_pages = ram_getsize() / PAGE_SIZE;
@@ -38,7 +39,7 @@ void vm_bootstrap(void)
 		pagetable[i].page = 0;
 		pagetable[i].frame = 0;
 		pagetable[i].pid = NULL;
-		pagetable[i].next = 0;
+		pagetable[i].next = num_pages;
 	}
 
 	ft_bootstrap();
@@ -101,11 +102,24 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	uint32_t index = hpt_hash(as, faultaddress);
 	spinlock_acquire(&pagetable_lock);
 	while (pagetable[index].pid != as || pagetable[index].page != faultaddress) {
-		if (pagetable[index].next == 0) {
-			for (uint32_t j = index; j < num_pages; j++) {
+		if (pagetable[index].next == num_pages) {
+			// page not found, finding next free space to add new page
+			for (uint32_t j = index + 1; j <= num_pages; j++) {
+				if (j == num_pages) {
+					// reached end of array, loop back to beginning
+					j = 0;
+					continue;
+				}
+				if (j == index) {
+					// looped through whole array, no page space left
+					spinlock_release(&pagetable_lock);
+					return ENOMEM;
+				}
 				if (pagetable[j].pid == NULL) {
+					// space found, update chain to point to it
 					pagetable[index].next = j;
 					index = j;
+					break;
 				}
 			}
 		}
@@ -118,7 +132,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 		pagetable[index].page = faultaddress;
 		pagetable[index].frame = alloc_kpages(1);
 		pagetable[index].pid = as;
-		pagetable[index].next = 0;
+		pagetable[index].next = num_pages;
 	}
 
 	paddr_t paddr = KVADDR_TO_PADDR(pagetable[index].frame);
@@ -151,7 +165,8 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	return EFAULT;
 }
 
-uint32_t hpt_hash(struct addrspace *as, vaddr_t faultaddr)
+uint32_t
+hpt_hash(struct addrspace *as, vaddr_t faultaddr)
 {
 	uint32_t index;
 
