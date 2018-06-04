@@ -49,7 +49,6 @@ vm_bootstrap(void)
 int
 vm_fault(int faulttype, vaddr_t faultaddress)
 {
-	uint32_t ehi, elo;
 	faultaddress &= PAGE_FRAME;
 
 	DEBUG(DB_VM, "vm.c: fault: 0x%x\n", faultaddress);
@@ -140,26 +139,15 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 	/* Disable interrupts on this CPU while frobbing the TLB. */
 	int spl = splhigh();
-
-	for (int i = 0; i < NUM_TLB; i++) {
-		tlb_read(&ehi, &elo, i);
-		if (elo & TLBLO_VALID) {
-			continue;
-		}
-		ehi = faultaddress;
-		elo = paddr | TLBLO_VALID;
-		if (write) {
-			elo |= TLBLO_DIRTY;
-		}
-		DEBUG(DB_VM, "vm.c: 0x%x -> 0x%x\n", faultaddress, paddr);
-		tlb_write(ehi, elo, i);
-		splx(spl);
-		return 0;
+	int ehi = faultaddress;
+	int elo = paddr | TLBLO_VALID;
+	if (write) {
+		elo |= TLBLO_DIRTY;
 	}
-
-	kprintf("vm.c: Ran out of TLB entries - cannot handle page fault\n");
+	DEBUG(DB_VM, "vm.c: 0x%x -> 0x%x\n", faultaddress, paddr);
+	tlb_random(ehi, elo);
 	splx(spl);
-	return EFAULT;
+	return 0;
 }
 
 // frees frames in use by a given process
