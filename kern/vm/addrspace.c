@@ -246,7 +246,7 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 	if (as == NULL) return EFAULT;
 
 	/* Initial user-level stack pointer */
-	*stackptr = as->stack_end;
+	*stackptr = USERSTACK;
 
 	return 0;
 }
