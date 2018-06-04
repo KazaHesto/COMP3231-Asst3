@@ -19,15 +19,15 @@ struct PTE {
 	int write;			// write permission bit
 	vaddr_t page;
 	vaddr_t frame;
-	struct addrspace *pid;
+	uint32_t pid;
 	uint32_t next;
 };
 
 static struct PTE *pagetable;
 static uint32_t num_pages;
 
-uint32_t hpt_hash(struct addrspace *as, vaddr_t faultaddr);
-uint32_t hpt_indexof(struct addrspace *as, vaddr_t faultaddr);
+uint32_t hpt_hash(uint32_t pid, vaddr_t faultaddr);
+uint32_t hpt_indexof(uint32_t pid, vaddr_t faultaddr);
 
 void
 vm_bootstrap(void)
@@ -39,7 +39,7 @@ vm_bootstrap(void)
 		pagetable[i].write = 0;
 		pagetable[i].page = 0;
 		pagetable[i].frame = 0;
-		pagetable[i].pid = NULL;
+		pagetable[i].pid = 0;
 		pagetable[i].next = num_pages;
 	}
 
@@ -115,19 +115,19 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 	spinlock_acquire(&pagetable_lock);
 	// find matching entry in page table
-	uint32_t index = hpt_indexof(as, faultaddress);
+	uint32_t index = hpt_indexof((uint32_t) as, faultaddress);
 
 	if (index == num_pages) {
 		// no space remaining
 		return ENOMEM;
 	}
 
-	if (pagetable[index].pid == NULL) {
+	if (pagetable[index].pid == 0) {
 		// no entry in page table yet
 		pagetable[index].write = write;
 		pagetable[index].page = faultaddress;
 		pagetable[index].frame = alloc_kpages(1);
-		pagetable[index].pid = as;
+		pagetable[index].pid = (uint32_t) as;
 		pagetable[index].next = num_pages;
 	}
 
@@ -152,7 +152,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 // frees frames in use by a given process
 void
-vm_freeproc(void)
+vm_freeproc(uint32_t pid)
 {
 	if (curproc == NULL) {
 		/*
@@ -162,18 +162,9 @@ vm_freeproc(void)
 		return;
 	}
 
-	struct addrspace *as = proc_getas();
-	if (as == NULL) {
-		/*
-		 * No address space set up. This is probably also a
-		 * kernel fault early in boot.
-		 */
-		return;
-	}
-
 	spinlock_acquire(&pagetable_lock);
 	for (uint32_t i = 0; i < num_pages; i++) {
-		if (pagetable[i].pid == as) {
+		if (pagetable[i].pid == pid) {
 			free_kpages(pagetable[i].frame);
 
 			// invalidate the tlb entry for page being deleted
@@ -186,11 +177,11 @@ vm_freeproc(void)
 			pagetable[gap].write = 0;
 			pagetable[gap].page  = 0;
 			pagetable[gap].frame = 0;
-			pagetable[gap].pid   = NULL;
+			pagetable[gap].pid   = 0;
 			pagetable[gap].next  = num_pages;
 
 			// shift pages further on in hash table
-			for (uint32_t j = i + 1; pagetable[j].pid != NULL; j++) {
+			for (uint32_t j = i + 1; pagetable[j].pid != 0; j++) {
 				// all page entries should be page aligned
 				KASSERT((pagetable[j].frame & PAGE_FRAME) == pagetable[j].frame);
 				if (j == num_pages) {
@@ -198,11 +189,11 @@ vm_freeproc(void)
 					j = 0;
 					continue;
 				}
-				if (j == i || pagetable[j].pid != NULL) {
+				if (j == i || pagetable[j].pid != 0) {
 					// looped through whole array or free slot found, everything has been shifted
 					return;
 				}
-				if (hpt_indexof(as, pagetable[j].frame) == gap) {
+				if (hpt_indexof(pid, pagetable[j].frame) == gap) {
 					// move page entry to the gap
 					pagetable[gap].write = pagetable[j].write;
 					pagetable[gap].page  = pagetable[j].page;
@@ -213,7 +204,7 @@ vm_freeproc(void)
 					pagetable[j].write = 0;
 					pagetable[j].page  = 0;
 					pagetable[j].frame = 0;
-					pagetable[j].pid   = NULL;
+					pagetable[j].pid   = 0;
 					pagetable[j].next  = num_pages;
 
 					gap = j;
@@ -225,25 +216,25 @@ vm_freeproc(void)
 }
 
 uint32_t
-hpt_hash(struct addrspace *as, vaddr_t faultaddr)
+hpt_hash(uint32_t pid, vaddr_t faultaddr)
 {
 	uint32_t index;
 
-	index = (((uint32_t )as) ^ (faultaddr >> PAGE_BITS)) % num_pages;
+	index = ((pid) ^ (faultaddr >> PAGE_BITS)) % num_pages;
 	return index;
 }
 
 // returns the index of the pte for a given address, or finds the closest empty
 // slot and adds it to the next chain
 uint32_t
-hpt_indexof(struct addrspace *as, vaddr_t faultaddr)
+hpt_indexof(uint32_t pid, vaddr_t faultaddr)
 {
-	uint32_t index = hpt_hash(as, faultaddr);
-	if (pagetable[index].pid == NULL) {
+	uint32_t index = hpt_hash(pid, faultaddr);
+	if (pagetable[index].pid == 0) {
 		// hash location is free, page not allocated and free space available
 		return index;
 	}
-	while (pagetable[index].pid != as || pagetable[index].page != faultaddr) {
+	while (pagetable[index].pid != pid || pagetable[index].page != faultaddr) {
 		if (pagetable[index].next == num_pages) {
 			// page not found, finding next free space to add new page
 			for (uint32_t j = index + 1; j <= num_pages; j++) {
@@ -256,7 +247,7 @@ hpt_indexof(struct addrspace *as, vaddr_t faultaddr)
 					// looped through whole array, no page space left
 					return num_pages;
 				}
-				if (pagetable[j].pid == NULL) {
+				if (pagetable[j].pid == 0) {
 					// space found, update chain to point to it
 					pagetable[index].next = j;
 					index = j;
