@@ -178,9 +178,17 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 
 	new->base = vaddr;
 	new->size = memsize;
-	new->read = readable;
-	new->write = writeable;
-
+	if (readable == 4) {
+		new->read = true;
+	} else {
+		new->read = false;
+	}
+	if (writeable == 2) {
+		new->write = true;
+	} else {
+		new->write = false;
+	}
+	
 	// have the highest address region at the start
 	if (new->base > as->start->base) {
 		new->next = as->start;
