@@ -175,23 +175,15 @@ vm_freeproc(void)
 		return;
 	}
 
-	uint32_t ehi, elo;
-
 	spinlock_acquire(&pagetable_lock);
 	for (uint32_t i = 0; i < num_pages; i++) {
 		if (pagetable[i].pid == as) {
 			free_kpages(pagetable[i].frame);
 
-			/* Disable interrupts on this CPU while frobbing the TLB. */
-			int spl = splhigh();
 			// invalidate the tlb entry for page being deleted
-			for (int k = 0; k < NUM_TLB; k++) {
-				tlb_read(&ehi, &elo, k);
-				if (elo & (TLBLO_VALID | pagetable[i].frame)) {
-					tlb_write(TLBHI_INVALID(k), TLBLO_INVALID(), k);
-					break;
-				}
-			}
+			int spl = splhigh();
+			int old_tlb = tlb_probe(pagetable[i].page, 0);
+			tlb_write(TLBHI_INVALID(old_tlb), TLBLO_INVALID(), old_tlb);
 			splx(spl);
 
 			uint32_t gap = i;
