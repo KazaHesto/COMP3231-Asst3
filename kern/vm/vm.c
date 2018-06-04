@@ -33,7 +33,7 @@ void
 vm_bootstrap(void)
 {
 	/* page table initialisation */
-	num_pages = ram_getsize() / PAGE_SIZE;
+	num_pages = ram_getsize() / PAGE_SIZE * 2;
 	pagetable = kmalloc(sizeof(struct PTE) * num_pages);
 	for (uint32_t i = 0; i < num_pages; i++) {
 		pagetable[i].write = 0;
@@ -82,12 +82,14 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 		return EFAULT;
 	}
 
+	int write = 0;
 	// check which region the address is in and the
 	// corresponding permissions
 	struct region *cur_region = as->start;
 	while (cur_region != NULL) {
 		if (faultaddress >= cur_region->base) {
-			if (faultaddress - cur_region->base < cur_region->size) {
+			if (faultaddress - cur_region->base <= cur_region->size) {
+				write = cur_region->write;
 				break;
 			}
 		}
@@ -96,7 +98,11 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 	if (cur_region == NULL) {
 		// no region matching the faultaddress
-		return EFAULT;
+		if (faultaddress < as->stack_end && faultaddress > (as->start->base + as->start->size)) {
+			write = 1;
+		} else {
+			return EFAULT;
+		}
 	}
 
 
@@ -111,7 +117,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 	if (pagetable[index].pid == NULL) {
 		// no entry in page table yet
-		pagetable[index].write = cur_region->write;
+		pagetable[index].write = write;
 		pagetable[index].page = faultaddress;
 		pagetable[index].frame = alloc_kpages(1);
 		pagetable[index].pid = as;
@@ -134,7 +140,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 		}
 		ehi = faultaddress;
 		elo = paddr | TLBLO_VALID;
-		if (cur_region->write) {
+		if (write) {
 			elo |= TLBLO_DIRTY;
 		}
 		DEBUG(DB_VM, "vm.c: 0x%x -> 0x%x\n", faultaddress, paddr);

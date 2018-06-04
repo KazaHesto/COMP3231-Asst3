@@ -180,8 +180,15 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 	new->size = memsize;
 	new->read = readable;
 	new->write = writeable;
-	new->next = as->start;
-	as->start = new;
+
+	// have the highest address region at the start
+	if (new->base > as->start->base) {
+		new->next = as->start;
+		as->start = new;
+	} else {
+		new->next = as->start->next;
+		as->start->next = new;
+	}
 
 	// unused
 	(void) executable;
@@ -229,11 +236,6 @@ int
 as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 {
 	if (as == NULL) return EFAULT;
-
-	size_t offset = NUMSTACK * PAGE_SIZE;
-	as_define_region(as, as->stack_end - offset, offset, 1, 1, 1);
-	// move stack ptr
-	as->stack_end -= offset;
 
 	/* Initial user-level stack pointer */
 	*stackptr = as->stack_end;
