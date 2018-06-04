@@ -88,7 +88,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	struct region *cur_region = as->start;
 	while (cur_region != NULL) {
 		if (faultaddress >= cur_region->base) {
-			if (faultaddress - cur_region->base <= cur_region->size) {
+			if (faultaddress - cur_region->base < cur_region->size) {
 				write = cur_region->write;
 				break;
 			}
