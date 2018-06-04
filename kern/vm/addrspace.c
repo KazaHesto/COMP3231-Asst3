@@ -170,6 +170,14 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 	if (as == NULL) return EFAULT;
 	if (vaddr + memsize >= as->stack_end) return ENOMEM;
 
+	// page alignment code from dumbvm.c
+	/* Align the region. First, the base... */
+	memsize += vaddr & ~(vaddr_t)PAGE_FRAME;
+	vaddr &= PAGE_FRAME;
+
+	/* ...and now the length. */
+	memsize = (memsize + PAGE_SIZE - 1) & PAGE_FRAME;
+
 	struct region *new = kmalloc(sizeof(struct region));
 	if (new == NULL) {
 		return ENOMEM;
@@ -190,24 +198,6 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 		new->next = as->start->next;
 		as->start->next = new;
 	}
-
-	// have the highest address region at the start
-	// if (as->start != NULL) {
-	// 	if (new->base > as->start->base) {
-	// 		new->next = as->start;
-	// 		as->start = new;
-	// 	} else {
-	// 		new->next = as->start->next;
-	// 		as->start->next = new;
-	// 	}
-	// } else {
-	// 	new->next = as->start;
-	// 	as->start = new;
-	// }
-
-
-	// new->next = as->start;
-	// as->start = new;
 
 	// unused
 	(void) readable;
