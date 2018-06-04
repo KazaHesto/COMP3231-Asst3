@@ -167,12 +167,6 @@ vm_freeproc(uint32_t pid)
 		if (pagetable[i].pid == pid) {
 			free_kpages(pagetable[i].frame);
 
-			// invalidate the tlb entry for page being deleted
-			int spl = splhigh();
-			int old_tlb = tlb_probe(pagetable[i].page, 0);
-			tlb_write(TLBHI_INVALID(old_tlb), TLBLO_INVALID(), old_tlb);
-			splx(spl);
-
 			uint32_t gap = i;
 			pagetable[gap].write = 0;
 			pagetable[gap].page  = 0;
@@ -191,6 +185,7 @@ vm_freeproc(uint32_t pid)
 				}
 				if (j == i || pagetable[j].pid != 0) {
 					// looped through whole array or free slot found, everything has been shifted
+					spinlock_release(&pagetable_lock);
 					return;
 				}
 				if (hpt_indexof(pid, pagetable[j].frame) == gap) {

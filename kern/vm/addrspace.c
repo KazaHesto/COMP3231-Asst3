@@ -118,6 +118,8 @@ as_destroy(struct addrspace *as)
 		kfree(del);
 	}
 
+	vm_freeproc((uint32_t) as);
+
 	kfree(as);
 }
 
