@@ -51,7 +51,6 @@ struct vnode;
 struct region {
 	vaddr_t base;
 	size_t size;
-	bool read;
 	bool write;
 	bool modified;
 	struct region *next;

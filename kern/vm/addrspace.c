@@ -86,7 +86,6 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		struct region *new = kmalloc(sizeof(struct region));
 		new->base = currOld->base;
 		new->size = currOld->size;
-		new->read = currOld->read;
 		new->write = currOld->write;
 		new->modified = currOld->modified;
 		new->next = NULL;
@@ -178,11 +177,6 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 
 	new->base = vaddr;
 	new->size = memsize;
-	if (readable == 4) {
-		new->read = true;
-	} else {
-		new->read = false;
-	}
 	if (writeable == 2) {
 		new->write = true;
 	} else {
@@ -199,6 +193,7 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 	}
 
 	// unused
+	(void) readable;
 	(void) executable;
 
 	return 0;
