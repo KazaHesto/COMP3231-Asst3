@@ -85,6 +85,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	int write = 0;
 	// check which region the address is in and the
 	// corresponding permissions
+	KASSERT(as->start != NULL);
 	struct region *cur_region = as->start;
 	while (cur_region != NULL) {
 		if (faultaddress >= cur_region->base) {

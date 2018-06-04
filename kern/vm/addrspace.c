@@ -182,15 +182,32 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 	} else {
 		new->write = false;
 	}
-	
-	// have the highest address region at the start
-	if (new->base > as->start->base) {
+
+	if (as->start == NULL || new->base > as->start->base) {
 		new->next = as->start;
 		as->start = new;
 	} else {
 		new->next = as->start->next;
 		as->start->next = new;
 	}
+
+	// have the highest address region at the start
+	// if (as->start != NULL) {
+	// 	if (new->base > as->start->base) {
+	// 		new->next = as->start;
+	// 		as->start = new;
+	// 	} else {
+	// 		new->next = as->start->next;
+	// 		as->start->next = new;
+	// 	}
+	// } else {
+	// 	new->next = as->start;
+	// 	as->start = new;
+	// }
+
+
+	// new->next = as->start;
+	// as->start = new;
 
 	// unused
 	(void) readable;
