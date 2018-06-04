@@ -154,14 +154,9 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 void
 vm_freeproc(uint32_t pid)
 {
-	if (curproc == NULL) {
-		/*
-		 * No process. This is probably a kernel fault early
-		 * in boot.
-		 */
+	if (pid == 0) {
 		return;
 	}
-
 	spinlock_acquire(&pagetable_lock);
 	for (uint32_t i = 0; i < num_pages; i++) {
 		if (pagetable[i].pid == pid) {
@@ -208,6 +203,40 @@ vm_freeproc(uint32_t pid)
 		}
 	}
 	spinlock_release(&pagetable_lock);
+}
+
+// clones the pages of a process to another's pid
+int
+vm_cloneproc(uint32_t oldpid, uint32_t newpid)
+{
+	if (oldpid == 0 || newpid == 0) {
+		return EFAULT;
+	}
+	spinlock_acquire(&pagetable_lock);
+	for (uint32_t i = 0; i < num_pages; i++) {
+		if (pagetable[i].pid == oldpid) {
+			uint32_t index = hpt_indexof(newpid, pagetable[i].page);
+			if (index == num_pages) {
+				spinlock_release(&pagetable_lock);
+				vm_freeproc(newpid);
+				return ENOMEM;
+			}
+			// copy page entry to the new page entry
+			pagetable[index].write = pagetable[i].write;
+			pagetable[index].page  = pagetable[i].page;
+			pagetable[index].frame = alloc_kpages(1);
+			pagetable[index].pid   = newpid;
+			pagetable[index].next  = 0;
+
+			if (memcpy((void *)pagetable[index].frame, (void *)pagetable[i].frame, PAGE_SIZE) == NULL) {
+				spinlock_release(&pagetable_lock);
+				vm_freeproc(newpid);
+				return ENOMEM;
+			}
+		}
+	}
+	spinlock_release(&pagetable_lock);
+	return 0;
 }
 
 uint32_t

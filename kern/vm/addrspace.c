@@ -84,6 +84,10 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 	struct region *currNew = NULL;
 	while (currOld != NULL) {
 		struct region *new = kmalloc(sizeof(struct region));
+		if (new == NULL) {
+			as_destroy(newas);
+			return ENOMEM;
+		}
 		new->base = currOld->base;
 		new->size = currOld->size;
 		new->write = currOld->write;
@@ -99,6 +103,11 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		currNew->next = new;
 		currNew = currNew->next;
 		currOld = currOld->next;
+	}
+	int result = vm_cloneproc((uint32_t) old, (uint32_t) newas);
+	if (result) {
+		as_destroy(newas);
+		return result;
 	}
 
 	*ret = newas;

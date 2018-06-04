@@ -60,6 +60,8 @@ void vm_tlbshootdown(const struct tlbshootdown *);
 
 void vm_freeproc(uint32_t pid);
 
+int vm_cloneproc(uint32_t oldpid, uint32_t newpid);
+
 void ft_bootstrap(void);
 
 #endif /* _VM_H_ */
