@@ -27,6 +27,7 @@ static struct PTE *pagetable;
 static uint32_t num_pages;
 
 uint32_t hpt_hash(struct addrspace *as, vaddr_t faultaddr);
+uint32_t hpt_indexof(struct addrspace *as, vaddr_t faultaddr);
 
 void
 vm_bootstrap(void)
@@ -165,12 +166,110 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	return EFAULT;
 }
 
+// frees frames in use by a given process
+void
+vm_freeproc(void)
+{
+	if (curproc == NULL) {
+		/*
+		 * No process. This is probably a kernel fault early
+		 * in boot.
+		 */
+		return;
+	}
+
+	struct addrspace *as = proc_getas();
+	if (as == NULL) {
+		/*
+		 * No address space set up. This is probably also a
+		 * kernel fault early in boot.
+		 */
+		return;
+	}
+
+	spinlock_acquire(&pagetable_lock);
+	for (uint32_t i = 0; i < num_pages; i++) {
+		if (pagetable[i].pid == as) {
+			free_kpages(pagetable[i].frame);
+			uint32_t gap = i;
+			pagetable[gap].write = 0;
+			pagetable[gap].page  = 0;
+			pagetable[gap].frame = 0;
+			pagetable[gap].pid   = NULL;
+			pagetable[gap].next  = num_pages;
+
+			// shift pages further on in hash table
+			for (uint32_t j = i + 1; pagetable[j].pid != NULL; j++) {
+				// all page entries should be page aligned
+				KASSERT((pagetable[j].frame & PAGE_FRAME) == pagetable[j].frame);
+				if (j == num_pages) {
+					// reached end of array, loop back to beginning
+					j = 0;
+					continue;
+				}
+				if (j == i || pagetable[j].pid != NULL) {
+					// looped through whole array or free slot found, everything has been shifted
+					return;
+				}
+				if (hpt_indexof(as, pagetable[j].frame) == gap) {
+					// move page entry to the gap
+					pagetable[gap].write = pagetable[j].write;
+					pagetable[gap].page  = pagetable[j].page;
+					pagetable[gap].frame = pagetable[j].frame;
+					pagetable[gap].pid   = pagetable[j].pid;
+					pagetable[gap].next  = pagetable[j].next;
+
+					pagetable[j].write = 0;
+					pagetable[j].page  = 0;
+					pagetable[j].frame = 0;
+					pagetable[j].pid   = NULL;
+					pagetable[j].next  = num_pages;
+
+					gap = j;
+				}
+			}
+		}
+	}
+	spinlock_release(&pagetable_lock);
+}
+
 uint32_t
 hpt_hash(struct addrspace *as, vaddr_t faultaddr)
 {
 	uint32_t index;
 
 	index = (((uint32_t )as) ^ (faultaddr >> PAGE_BITS)) % num_pages;
+	return index;
+}
+
+uint32_t
+hpt_indexof(struct addrspace *as, vaddr_t faultaddr)
+{
+	uint32_t index = hpt_hash(as, faultaddr);
+	spinlock_acquire(&pagetable_lock);
+	while (pagetable[index].pid != as || pagetable[index].page != faultaddr) {
+		if (pagetable[index].next == num_pages) {
+			// page not found, finding next free space to add new page
+			for (uint32_t j = index + 1; j <= num_pages; j++) {
+				if (j == num_pages) {
+					// reached end of array, loop back to beginning
+					j = 0;
+					continue;
+				}
+				if (j == index) {
+					// looped through whole array, no page space left
+					return num_pages;
+				}
+				if (pagetable[j].pid == NULL) {
+					// space found, update chain to point to it
+					pagetable[index].next = j;
+					index = j;
+					break;
+				}
+			}
+		}
+		index = pagetable[index].next;
+	}
 	return index;
 }
 
