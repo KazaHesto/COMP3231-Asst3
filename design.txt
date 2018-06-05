@@ -1,1 +1,90 @@
-Place your design document here.
+The “addrspace” structure represents virtual memory. With an
+unset dumbvm, the addrspace struct contains an address to the end
+of the stack (acts like a stack pointer) and a pointer to the start
+of the region linked list. Regions are represented as a linked list,
+with the “region” struct acting as nodes in the list. The region
+struct contains
+ *	The starting address of the region “base”.
+ *	The “size” of the region.
+ *	A “write” bit/flag to check if the region is writeable.
+ *	A “modified” bit/flag to check if the region was modified. This is 
+	used to check if a region was had its write permissions changed by
+	as_prepare_load() so that as_complete_load() can revoke them when it
+	is called.
+ *	A pointer to the next region.
+For the region linked list, the order of regions is not significant.
+ 
+The address space has many functions used to manage it. The functions
+as_create(), as_copy(), as_destroy() and as_define_region() handle
+the creation and deletion of the address space and its regions.
+ *	as_create() initialises a new address space with no regions.
+ *	as_copy() clones an address space by copying the stack pointer from
+	the original addrspace struct as well as the regions linked list. Each
+	region from the original list has its base address, size, 
+	write/modified flags and the next pointers copied over. The call to
+	vm_cloneproc() ensures the contents within memory are entirely cloned
+	over to the	new address space.
+ *	as_destroy() frees all memory associated with an address space. First
+	it frees each region node from the region linked list individually,
+	running vm_freeproc() at the end to ensure the contents stored in
+	these regions are freed. The addrspace is freed once all of its
+	regions are freed.
+ *	as_define_region() defines a new region of memory in the address
+	space. This new region is added to the head of the addrspace’s region
+	list. The vaddr and size arguments of the function are aligned with
+	the other region’s addresses. Only the writeable argument is checked
+	when defining a new region.
+ 
+Other address space functions are as_activate(), as_deactivate(),
+as_prepare_load() and as_complete_load()
+ *	as_activate() and as_deactivate() were copied over from dumbvm
+ *	as_prepare_load() makes non-writeable regions writeable by changing
+	their “write” flag. as_complete_load() undos this change. To keep
+	track of which regions have had their permissions changed,
+	as_prepare_load() also changes the region’s “modified” flag. This flag
+	is checked when as_complete_load() is called.
+ 
+The frame table is implemented as an array of ft_entry structs, each with
+an int storing the state of the frame it corresponds to (FRAME_FREE = 0,
+FRAME_USED = 1, FRAME_LOCKED = -1). The spinlock stealmem_lock is used
+to guard access to the frame table to prevent simultaneous access. The
+physical address the frame corresponds to is calculated from the array
+index number multiplied by the frame size. This allows frame table entries
+to take up less space since they do not need to store the address.
+
+The index to the first free frame is stored with the frame table. This
+allows alloc_kpages() to return a free address without having to traverse
+the frame table array from the start each time. This index is updated to
+the next free when a frame is allocated, and when a frame is freed if the
+freed frame is lower than the current index. 
+ 
+The frame table along with the page table is allocated before
+ram_getfirstfree() is called, allowing it to be allocated with
+ram_getfirstfree() and makes it already included in the memory before
+ram_getfirstfree(), so it is unnecessary to calculate which frames the
+frame table is occupying separately from other memory already in use
+before the initialisation of the frametable.
+
+The page table is implemented as a hash table using an array as it’s
+storage and linear probing for collision resolution. Linear probing
+allows for the table to be allocated all at once during initialisation,
+and reduces size by negating the need to store pointers as would be
+needed with external chaining. While the performance of linear probing is
+bad when the hash table is near full, this impact is reduced since the
+page table is sized to be double the size of physical memory and should
+therefore not be in a near full state.
+ 
+Deleting pages from the page table involves traversing the table for
+entries which can be moved up into the space freed until an empty slot is
+encountered or the table has been fully traversed. When the end of the
+table is reached, the traversal wraps around to the beginning.
+ 
+The function vm_freeproc() was added to free any pages associated with a
+given pid, and vm_cloneproc() was added to clone the pages associated with
+one pid to another. Adding these two functions allows for all direct
+interaction with the page table to be kept in vm.c, improving the
+encapsulation and maintainability of the code.
+
+vm_fault() assumes a stack size of 16 * PAGE_SIZE. Any access outside
+of the assumed stack and the defined regions is considered invalid.
+ 
