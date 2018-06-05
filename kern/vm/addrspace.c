@@ -196,6 +196,7 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 
 	new->base = vaddr;
 	new->size = memsize;
+	new->modified = false;
 	if (writeable == 2) {
 		new->write = true;
 	} else {
