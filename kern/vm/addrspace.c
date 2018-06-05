@@ -202,14 +202,8 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 	} else {
 		new->write = false;
 	}
-
-	if (as->start == NULL || new->base > as->start->base) {
-		new->next = as->start;
-		as->start = new;
-	} else {
-		new->next = as->start->next;
-		as->start->next = new;
-	}
+	new->next = as->start;
+	as->start = new;
 
 	// unused
 	(void) readable;
