@@ -166,29 +166,24 @@ vm_freeproc(uint32_t pid)
 			pagetable[i].frame = 0;
 			pagetable[i].pid   = 0;
 
+			uint32_t gap = i;
+
 			// shift pages further on in hash table if their hash is before their current position
 			for (uint32_t j = i + 1; pagetable[j].pid != 0; j++) {
 				// all page entries should be page aligned
 				KASSERT((pagetable[j].frame & PAGE_FRAME) == pagetable[j].frame);
 				if (hpt_hash(pid, pagetable[j].frame) != j) {
 					// move page entry to the gap
-					if (j != 0) {
-						pagetable[j - 1].write = pagetable[j].write;
-						pagetable[j - 1].page  = pagetable[j].page;
-						pagetable[j - 1].frame = pagetable[j].frame;
-						pagetable[j - 1].pid   = pagetable[j].pid;
-					} else {
-						// wrap back around to the end of the array
-						pagetable[j].write = pagetable[num_pages - 1].write;
-						pagetable[j].page  = pagetable[num_pages - 1].page;
-						pagetable[j].frame = pagetable[num_pages - 1].frame;
-						pagetable[j].pid   = pagetable[num_pages - 1].pid;
-					}
+					pagetable[gap].write = pagetable[j].write;
+					pagetable[gap].page  = pagetable[j].page;
+					pagetable[gap].frame = pagetable[j].frame;
+					pagetable[gap].pid   = pagetable[j].pid;
 
 					pagetable[j].write = 0;
 					pagetable[j].page  = 0;
 					pagetable[j].frame = 0;
 					pagetable[j].pid   = 0;
+					gap = j;
 				}
 				if (j == num_pages) {
 					// reached end of array, loop back to beginning
