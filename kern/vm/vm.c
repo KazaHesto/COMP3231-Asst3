@@ -13,6 +13,8 @@
 // used for hash
 #define PAGE_BITS  12
 
+#define USER_STACK_SIZE 16 * PAGE_SIZE
+
 static struct lock *pagetable_lock;
 
 /* Page Table Entry */
@@ -108,7 +110,8 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 	if (cur_region == NULL) {
 		// no region matching the faultaddress
-		if (faultaddress < as->stack_end && faultaddress > (as->start->base + as->start->size)) {
+		if (faultaddress < as->stack_end && faultaddress > (as->stack_end - USER_STACK_SIZE)) {
+			// location is in stack
 			write = 1;
 		} else {
 			return EFAULT;
