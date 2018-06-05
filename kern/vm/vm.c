@@ -8,11 +8,12 @@
 #include <proc.h>
 #include <current.h>
 #include <spl.h>
+#include <synch.h>
 
 // used for hash
 #define PAGE_BITS  12
 
-static struct spinlock pagetable_lock = SPINLOCK_INITIALIZER;
+static struct lock *pagetable_lock;
 
 /* Page Table Entry */
 struct PTE {
@@ -39,6 +40,10 @@ vm_bootstrap(void)
 		pagetable[i].page = 0;
 		pagetable[i].frame = 0;
 		pagetable[i].pid = 0;
+	}
+	pagetable_lock = lock_create("pt_lock");
+	if (pagetable_lock == NULL) {
+		panic("vm.c: lock create failed\n");
 	}
 
 	ft_bootstrap();
@@ -111,7 +116,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	}
 
 
-	spinlock_acquire(&pagetable_lock);
+	lock_acquire(pagetable_lock);
 	// find matching entry in page table
 	uint32_t index = hpt_indexof((uint32_t) as, faultaddress);
 
@@ -129,7 +134,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	}
 
 	paddr_t paddr = KVADDR_TO_PADDR(pagetable[index].frame);
-	spinlock_release(&pagetable_lock);
+	lock_release(pagetable_lock);
 
 	/* make sure it's page-aligned */
 	KASSERT((paddr & PAGE_FRAME) == paddr);
@@ -155,7 +160,7 @@ vm_freeproc(uint32_t pid)
 		// input is invalid
 		return;
 	}
-	spinlock_acquire(&pagetable_lock);
+	lock_acquire(pagetable_lock);
 	for (uint32_t i = 0; i < num_pages; i++) {
 		if (pagetable[i].pid == pid) {
 			// pte with given pid found, freeing page
@@ -197,7 +202,7 @@ vm_freeproc(uint32_t pid)
 			}
 		}
 	}
-	spinlock_release(&pagetable_lock);
+	lock_release(pagetable_lock);
 }
 
 // clones the pages of a process to another's pid
@@ -208,7 +213,7 @@ vm_cloneproc(uint32_t oldpid, uint32_t newpid)
 		// input is invalid
 		return EFAULT;
 	}
-	spinlock_acquire(&pagetable_lock);
+	lock_acquire(pagetable_lock);
 	for (uint32_t i = 0; i < num_pages; i++) {
 		if (pagetable[i].pid == oldpid) {
 			// PTE with given pid found, create a copy with the new pid
@@ -216,7 +221,7 @@ vm_cloneproc(uint32_t oldpid, uint32_t newpid)
 			uint32_t index = hpt_indexof(newpid, pagetable[i].page);
 			if (index == num_pages) {
 				// no space found, page table full
-				spinlock_release(&pagetable_lock);
+				lock_release(pagetable_lock);
 				vm_freeproc(newpid);
 				return ENOMEM;
 			}
@@ -229,13 +234,13 @@ vm_cloneproc(uint32_t oldpid, uint32_t newpid)
 			if (memcpy((void *)pagetable[index].frame, (void *)pagetable[i].frame,
 					PAGE_SIZE) == NULL) {
 				// memcpy failed, roll back changes
-				spinlock_release(&pagetable_lock);
+				lock_release(pagetable_lock);
 				vm_freeproc(newpid);
 				return ENOMEM;
 			}
 		}
 	}
-	spinlock_release(&pagetable_lock);
+	lock_release(pagetable_lock);
 	return 0;
 }
 
