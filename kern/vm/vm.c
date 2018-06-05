@@ -274,8 +274,7 @@ hpt_indexof(uint32_t pid, vaddr_t faultaddr)
 				if (pagetable[j].pid == 0) {
 					// space found, update chain to point to it
 					pagetable[index].next = j;
-					index = j;
-					break;
+					return j;
 				}
 			}
 		}
