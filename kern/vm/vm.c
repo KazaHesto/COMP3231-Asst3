@@ -39,9 +39,9 @@ vm_bootstrap(void)
 	pagetable = kmalloc(sizeof(struct PTE) * num_pages);
 	for (uint32_t i = 0; i < num_pages; i++) {
 		pagetable[i].write = 0;
-		pagetable[i].page = 0;
+		pagetable[i].page  = 0;
 		pagetable[i].frame = 0;
-		pagetable[i].pid = 0;
+		pagetable[i].pid   = 0;
 	}
 	pagetable_lock = lock_create("pt_lock");
 	if (pagetable_lock == NULL) {
@@ -125,15 +125,16 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 	if (index == num_pages) {
 		// no space remaining
+		lock_release(pagetable_lock);
 		return ENOMEM;
 	}
 
 	if (pagetable[index].pid == 0) {
 		// no entry in page table yet
 		pagetable[index].write = write;
-		pagetable[index].page = faultaddress;
+		pagetable[index].page  = faultaddress;
 		pagetable[index].frame = alloc_kpages(1);
-		pagetable[index].pid = (uint32_t) as;
+		pagetable[index].pid   = (uint32_t) as;
 	}
 
 	paddr_t paddr = KVADDR_TO_PADDR(pagetable[index].frame);
