@@ -172,7 +172,7 @@ vm_freeproc(uint32_t pid)
 			for (uint32_t j = i + 1; pagetable[j].pid != 0; j++) {
 				// all page entries should be page aligned
 				KASSERT((pagetable[j].frame & PAGE_FRAME) == pagetable[j].frame);
-				if (hpt_hash(pid, pagetable[j].frame) != j) {
+				if (hpt_indexof(pid, pagetable[j].frame) == gap) {
 					// move page entry to the gap
 					pagetable[gap].write = pagetable[j].write;
 					pagetable[gap].page  = pagetable[j].page;
