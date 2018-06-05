@@ -210,25 +210,31 @@ int
 vm_cloneproc(uint32_t oldpid, uint32_t newpid)
 {
 	if (oldpid == 0 || newpid == 0) {
+		// input is invalid
 		return EFAULT;
 	}
 	spinlock_acquire(&pagetable_lock);
 	for (uint32_t i = 0; i < num_pages; i++) {
 		if (pagetable[i].pid == oldpid) {
+			// PTE with given pid found, create a copy with the new pid
+			KASSERT((pagetable[i].page & PAGE_FRAME) == pagetable[i].page);
 			uint32_t index = hpt_indexof(newpid, pagetable[i].page);
 			if (index == num_pages) {
+				// no space found, page table full
 				spinlock_release(&pagetable_lock);
 				vm_freeproc(newpid);
 				return ENOMEM;
 			}
-			// copy page entry to the new page entry
+			// copy original PTE data to the new PTE
 			pagetable[index].write = pagetable[i].write;
 			pagetable[index].page  = pagetable[i].page;
 			pagetable[index].frame = alloc_kpages(1);
 			pagetable[index].pid   = newpid;
 			pagetable[index].next  = 0;
-
-			if (memcpy((void *)pagetable[index].frame, (void *)pagetable[i].frame, PAGE_SIZE) == NULL) {
+			// copy data from memory into the new page
+			if (memcpy((void *)pagetable[index].frame, (void *)pagetable[i].frame,
+					PAGE_SIZE) == NULL) {
+				// memcpy failed, roll back changes
 				spinlock_release(&pagetable_lock);
 				vm_freeproc(newpid);
 				return ENOMEM;
@@ -239,6 +245,7 @@ vm_cloneproc(uint32_t oldpid, uint32_t newpid)
 	return 0;
 }
 
+// calculates hash from the pid and virtual address
 uint32_t
 hpt_hash(uint32_t pid, vaddr_t faultaddr)
 {
