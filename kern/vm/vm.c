@@ -20,7 +20,6 @@ struct PTE {
 	vaddr_t page;
 	vaddr_t frame;
 	uint32_t pid;
-	uint32_t next;
 };
 
 static struct PTE *pagetable;
@@ -40,7 +39,6 @@ vm_bootstrap(void)
 		pagetable[i].page = 0;
 		pagetable[i].frame = 0;
 		pagetable[i].pid = 0;
-		pagetable[i].next = num_pages;
 	}
 
 	ft_bootstrap();
@@ -128,7 +126,6 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 		pagetable[index].page = faultaddress;
 		pagetable[index].frame = alloc_kpages(1);
 		pagetable[index].pid = (uint32_t) as;
-		pagetable[index].next = num_pages;
 	}
 
 	paddr_t paddr = KVADDR_TO_PADDR(pagetable[index].frame);
@@ -155,49 +152,52 @@ void
 vm_freeproc(uint32_t pid)
 {
 	if (pid == 0) {
+		// input is invalid
 		return;
 	}
 	spinlock_acquire(&pagetable_lock);
 	for (uint32_t i = 0; i < num_pages; i++) {
 		if (pagetable[i].pid == pid) {
+			// pte with given pid found, freeing page
+			KASSERT((pagetable[i].page & PAGE_FRAME) == pagetable[i].page);
 			free_kpages(pagetable[i].frame);
+			pagetable[i].write = 0;
+			pagetable[i].page  = 0;
+			pagetable[i].frame = 0;
+			pagetable[i].pid   = 0;
 
-			uint32_t gap = i;
-			pagetable[gap].write = 0;
-			pagetable[gap].page  = 0;
-			pagetable[gap].frame = 0;
-			pagetable[gap].pid   = 0;
-			pagetable[gap].next  = num_pages;
-
-			// shift pages further on in hash table
+			// shift pages further on in hash table if their hash is before their current position
 			for (uint32_t j = i + 1; pagetable[j].pid != 0; j++) {
 				// all page entries should be page aligned
 				KASSERT((pagetable[j].frame & PAGE_FRAME) == pagetable[j].frame);
-				if (j == num_pages) {
-					// reached end of array, loop back to beginning
-					j = 0;
-					continue;
-				}
-				if (j == i || pagetable[j].pid != 0) {
-					// looped through whole array or free slot found, everything has been shifted
-					spinlock_release(&pagetable_lock);
-					return;
-				}
-				if (hpt_indexof(pid, pagetable[j].frame) == gap) {
+				if (hpt_hash(pid, pagetable[j].frame) != j) {
 					// move page entry to the gap
-					pagetable[gap].write = pagetable[j].write;
-					pagetable[gap].page  = pagetable[j].page;
-					pagetable[gap].frame = pagetable[j].frame;
-					pagetable[gap].pid   = pagetable[j].pid;
-					pagetable[gap].next  = pagetable[j].next;
+					if (j != 0) {
+						pagetable[j - 1].write = pagetable[j].write;
+						pagetable[j - 1].page  = pagetable[j].page;
+						pagetable[j - 1].frame = pagetable[j].frame;
+						pagetable[j - 1].pid   = pagetable[j].pid;
+					} else {
+						// wrap back around to the end of the array
+						pagetable[j].write = pagetable[num_pages - 1].write;
+						pagetable[j].page  = pagetable[num_pages - 1].page;
+						pagetable[j].frame = pagetable[num_pages - 1].frame;
+						pagetable[j].pid   = pagetable[num_pages - 1].pid;
+					}
 
 					pagetable[j].write = 0;
 					pagetable[j].page  = 0;
 					pagetable[j].frame = 0;
 					pagetable[j].pid   = 0;
-					pagetable[j].next  = num_pages;
-
-					gap = j;
+				}
+				if (j == num_pages) {
+					// reached end of array, loop back to beginning
+					j = 0;
+					continue;
+				}
+				if (j == i) {
+					// traversed through whole array, everything has been shifted
+					break;
 				}
 			}
 		}
@@ -230,7 +230,6 @@ vm_cloneproc(uint32_t oldpid, uint32_t newpid)
 			pagetable[index].page  = pagetable[i].page;
 			pagetable[index].frame = alloc_kpages(1);
 			pagetable[index].pid   = newpid;
-			pagetable[index].next  = 0;
 			// copy data from memory into the new page
 			if (memcpy((void *)pagetable[index].frame, (void *)pagetable[i].frame,
 					PAGE_SIZE) == NULL) {
@@ -253,8 +252,7 @@ hpt_hash(uint32_t pid, vaddr_t faultaddr)
 	return index;
 }
 
-// returns the index of the pte for a given address, or finds the closest empty
-// slot and adds it to the next chain
+// returns the index of the pte for a given address and pid, or finds the closest empty slot
 uint32_t
 hpt_indexof(uint32_t pid, vaddr_t faultaddr)
 {
@@ -263,28 +261,22 @@ hpt_indexof(uint32_t pid, vaddr_t faultaddr)
 		// hash location is free, so use that
 		return index;
 	}
-	while (pagetable[index].pid != pid || pagetable[index].page != faultaddr) {
-		if (pagetable[index].next == num_pages) {
-			// page not found, finding next free space to add new page
-			for (uint32_t j = index + 1; j <= num_pages; j++) {
-				if (pagetable[j].pid == 0) {
-					// space found, update chain to point to it
-					pagetable[index].next = j;
-					return j;
-				}
-				if (j == num_pages) {
-					// reached end of array, loop back to beginning
-					j = 0;
-					continue;
-				}
-				if (j == index) {
-					// traversed through whole array, no free space left
-					return num_pages;
-				}
-			}
+	for (; pagetable[index].pid != pid || pagetable[index].page != faultaddr; index++) {
+		if (pagetable[index].pid == 0) {
+			// space found
+			return index;
 		}
-		index = pagetable[index].next;
+		if (index == num_pages) {
+			// reached end of array, loop back to beginning
+			index = 0;
+			continue;
+		}
+		if (index == index) {
+			// traversed through whole array, no free space left
+			return num_pages;
+		}
 	}
+	// pte matching input found
 	return index;
 }
 
