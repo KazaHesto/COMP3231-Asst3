@@ -242,9 +242,7 @@ vm_cloneproc(uint32_t oldpid, uint32_t newpid)
 uint32_t
 hpt_hash(uint32_t pid, vaddr_t faultaddr)
 {
-	uint32_t index;
-
-	index = ((pid) ^ (faultaddr >> PAGE_BITS)) % num_pages;
+	uint32_t index = ((pid) ^ (faultaddr >> PAGE_BITS)) % num_pages;
 	return index;
 }
 
@@ -255,26 +253,26 @@ hpt_indexof(uint32_t pid, vaddr_t faultaddr)
 {
 	uint32_t index = hpt_hash(pid, faultaddr);
 	if (pagetable[index].pid == 0) {
-		// hash location is free, page not allocated and free space available
+		// hash location is free, so use that
 		return index;
 	}
 	while (pagetable[index].pid != pid || pagetable[index].page != faultaddr) {
 		if (pagetable[index].next == num_pages) {
 			// page not found, finding next free space to add new page
 			for (uint32_t j = index + 1; j <= num_pages; j++) {
+				if (pagetable[j].pid == 0) {
+					// space found, update chain to point to it
+					pagetable[index].next = j;
+					return j;
+				}
 				if (j == num_pages) {
 					// reached end of array, loop back to beginning
 					j = 0;
 					continue;
 				}
 				if (j == index) {
-					// looped through whole array, no page space left
+					// traversed through whole array, no free space left
 					return num_pages;
-				}
-				if (pagetable[j].pid == 0) {
-					// space found, update chain to point to it
-					pagetable[index].next = j;
-					return j;
 				}
 			}
 		}
